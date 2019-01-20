@@ -10,10 +10,22 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 contract DateMaker is Streams{  // creates Dates (shared streams) and corresponds them to the streams[]
     uint256 IDcounter;  // used for dateID and corresponding streamID/might be replaced by streamNonce
     address burnAddress = 0x0000000000000000000000000000000000000000;
+    Date[] datebook;
     
+    
+  
+    function createDate(
+        address _invited, 
+        address _tokenAddress,
+        uint256 _startBlock,
+        uint256 _stopBlock,
+        uint256 _payment,
+        uint256 _interval) payable {
     
     
 }
+
+
 
 contract Date {
     address host;
@@ -31,14 +43,15 @@ contract Date {
     
     
     constructor(
+        address _sender,
         address _invited, 
-        address _tokenAddress;
-        uint256 _startBlock;
-        uint256 _stopBlock;
-        uint256 _payment;
-        uint256 _interval;) { // should pass all terms to later create stream
+        address _tokenAddress,
+        uint256 _startBlock,
+        uint256 _stopBlock,
+        uint256 _payment,
+        uint256 _interval) { // passes all terms to later create stream
         
-        host = msg.sender;
+        host = _sender;
         invited = _invited;
         tokenAddress = _tokenAddress;
         startBlock = _startBlock;
