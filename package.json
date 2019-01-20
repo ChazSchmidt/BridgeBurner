@@ -1,0 +1,28 @@
+{
+  "name": "BridgeBurner",
+  "version": "0.1.0",
+  "author": "Chaz Schmidt",
+  "description": "Burning funds for being late to a meeting or date",
+  "license": "MIT",
+  "homepage": "https://github.com/ChazSchmidt/BridgeBurner#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChazSchmidt/BridgeBurner.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ChazSchmidt/BridgeBurner/issues"
+  },
+  "dependencies": {
+    "web3": "^1.0.0-beta.37",
+    "web3-utils": "^1.0.0-beta.37"
+  },
+  "devDependencies": {
+    "dotenv": "^6.2.0",
+    "openzeppelin-solidity": "^2.1.2",
+    "truffle": "^5.0.2",
+    "truffle-hdwallet-provider": "^1.0.0-web3one.5"
+  },
+  "scripts": {
+    "test": "./node_modules/.bin/truffle test"
+  }
+}
