@@ -3,7 +3,7 @@ import "./Streams.sol";
 
 contract DateMaker is Streams {  // creates Dates (shared streams) and corresponds them to the streams[]
     uint256 IDcounter;  // used for dateID and corresponding streamID/might be replaced by streamNonce
-    address burnAddress = 0x0000000000000000000000000000000000000000;
+    address burnAddress = 0xbad0000000000000000000000000000000000000;
     Date[] datebook;
     
     
