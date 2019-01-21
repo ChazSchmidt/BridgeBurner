@@ -1,97 +1,15 @@
-pragma solidity >=0.5.1 <0.6.0; 
-//import "./ownable.sol";
-//import "./Streams.sol";
+pragma solidity ^0.4.25;
 
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
-
-contract DateMaker is Streams{  // creates Dates (shared streams) and corresponds them to the streams[]
-    uint256 IDcounter;  // used for dateID and corresponding streamID/might be replaced by streamNonce
-    address burnAddress = 0x0000000000000000000000000000000000000000;
-    Date[] datebook;
-    
-    
-  
-    function createDate(
-        address _invited, 
-        address _tokenAddress,
-        uint256 _startBlock,
-        uint256 _stopBlock,
-        uint256 _payment,
-        uint256 _interval) payable {
-    
-    
-}
-
-
-
-contract Date {
-    address host;
-    address invited;
-    mapping(address => uint256) depositedShare;
-    
-    //create function parameters
-//    address _sender,
-//    address _recipient,
-    address tokenAddress;
-    uint256 startBlock;
-    uint256 stopBlock;
-    uint256 payment;
-    uint256 interval;
-    
-    
-    constructor(
-        address _sender,
-        address _invited, 
-        address _tokenAddress,
-        uint256 _startBlock,
-        uint256 _stopBlock,
-        uint256 _payment,
-        uint256 _interval) { // passes all terms to later create stream
-        
-        host = _sender;
-        invited = _invited;
-        tokenAddress = _tokenAddress;
-        startBlock = _startBlock;
-        stopBlock = _stopBlock;
-        payment = _payment;
-        interval = _interval;
-    }
-    
-    function getStreamTerms() returns( 
-        address _tokenAddress,
-        uint256 _startBlock,
-        uint256 _stopBlock,
-        uint256 _payment,
-        uint256 _interval) { // should pass all terms to later create stream
-        return (
-        address _tokenAddress,
-        uint256 _startBlock,
-        uint256 _stopBlock,
-        uint256 _payment,
-        uint256 _interval)
-    }
-    
-    function getInvited() returns (address _invited) {
-        return invited;
-    }
-    
-    function getShareofBalance(address _address) {
-        return depositedShare[_address];
-    }
-  
-}
-  
-
-
-// import "./IERC.sol";
+import "./IERC1620.sol";
 
 /// @title Streams - ERC Money Streaming Implementation
 /// @author Paul Berg - <hello@paulrberg.com>
 
-contract Streams is Ownable {
+contract Streams is Ownable, IERC1620 {
   using SafeMath for uint256;
 
   /*
@@ -207,7 +125,7 @@ contract Streams is Ownable {
     _;
   }
 
-  modifier confirmed(uint256 _streamId, address _addr) {
+  modifier updateConfirmed(uint256 _streamId, address _addr) {
     require(
       updates[_streamId][_addr] == true,
       "msg.sender has not previously confirmed the update"
@@ -220,6 +138,25 @@ contract Streams is Ownable {
    */
   constructor() public {
     streamNonce = 1;
+  }
+
+  function balanceOf(uint256 _streamId, address _addr)
+    public
+    view
+    streamExists(_streamId)
+    returns (uint256 balance)
+  {
+    Stream memory stream = streams[_streamId];
+    uint256 deposit = depositOf(_streamId);
+    uint256 delta = deltaOf(_streamId);
+    uint256 funds = delta.div(stream.rate.interval).mul(stream.rate.payment);
+
+    if (stream.balance != deposit)
+      funds = funds.sub(deposit.sub(stream.balance));
+    if (_addr == stream.recipient)
+      return funds;
+    else
+      return stream.balance.sub(funds);
   }
 
   function getStream(uint256 _streamId)
@@ -346,7 +283,7 @@ contract Streams is Ownable {
     delete streams[_streamId];
     updates[_streamId][stream.sender] = false;
     updates[_streamId][stream.recipient] = false;
-    
+
     // reverts when the token address is not an ERC20 contract
     IERC20 tokenContract = IERC20(stream.tokenAddress);
     // saving gas by checking beforehand
@@ -408,7 +345,7 @@ contract Streams is Ownable {
     uint256 _interval
   )
     public
-    confirmed(_streamId, msg.sender)
+    updateConfirmed(_streamId, msg.sender)
   {
     emit LogRevokeUpdate(
       _streamId,
@@ -419,71 +356,6 @@ contract Streams is Ownable {
       _interval
     );
     updates[_streamId][msg.sender] = false;
-  }
-
-  // solium-disable-next-line function-order
-  function executeUpdate(
-    uint256 _streamId,
-    address _tokenAddress,
-    uint256 _stopBlock,
-    uint256 _payment,
-    uint256 _interval
-  )
-    public
-    streamExists(_streamId)
-  {
-    Stream memory stream = streams[_streamId];
-    if (updates[_streamId][stream.sender] == false)
-      return;
-    if (updates[_streamId][stream.recipient] == false)
-      return;
-
-    // adjust stop block
-    uint256 remainder = _stopBlock.sub(block.number).mod(_interval);
-    uint256 adjustedStopBlock = _stopBlock.sub(remainder);
-    emit LogExecuteUpdate(
-      _streamId,
-      stream.sender,
-      stream.recipient,
-      _tokenAddress,
-      adjustedStopBlock,
-      _payment,
-      _interval
-    );
-    updates[_streamId][stream.sender] = false;
-    updates[_streamId][stream.recipient] = false;
-
-    redeem(
-      _streamId
-    );
-    create(
-      stream.sender,
-      stream.recipient,
-      _tokenAddress,
-      block.number,
-      adjustedStopBlock,
-      _payment,
-      _interval
-    );
-  }
-
-  function balanceOf(uint256 _streamId, address _addr)
-    public
-    view
-    streamExists(_streamId)
-    returns (uint256 balance)
-  {
-    Stream memory stream = streams[_streamId];
-    uint256 deposit = depositOf(_streamId);
-    uint256 delta = deltaOf(_streamId);
-    uint256 funds = delta.div(stream.rate.interval).mul(stream.rate.payment);
-
-    if (stream.balance != deposit)
-      funds = funds.sub(deposit.sub(stream.balance));
-    if (_addr == stream.recipient)
-      return funds;
-    else
-      return stream.balance.sub(funds);
   }
 
   /*
@@ -576,5 +448,51 @@ contract Streams is Ownable {
       "the block difference needs to be a multiple of the payment interval"
     );
     return true;
+  }
+
+    // solium-disable-next-line function-order
+  function executeUpdate(
+    uint256 _streamId,
+    address _tokenAddress,
+    uint256 _stopBlock,
+    uint256 _payment,
+    uint256 _interval
+  )
+    private
+    streamExists(_streamId)
+  {
+    Stream memory stream = streams[_streamId];
+    if (updates[_streamId][stream.sender] == false)
+      return;
+    if (updates[_streamId][stream.recipient] == false)
+      return;
+
+    // adjust stop block
+    uint256 remainder = _stopBlock.sub(block.number).mod(_interval);
+    uint256 adjustedStopBlock = _stopBlock.sub(remainder);
+    emit LogExecuteUpdate(
+      _streamId,
+      stream.sender,
+      stream.recipient,
+      _tokenAddress,
+      adjustedStopBlock,
+      _payment,
+      _interval
+    );
+    updates[_streamId][stream.sender] = false;
+    updates[_streamId][stream.recipient] = false;
+
+    redeem(
+      _streamId
+    );
+    create(
+      stream.sender,
+      stream.recipient,
+      _tokenAddress,
+      block.number,
+      adjustedStopBlock,
+      _payment,
+      _interval
+    );
   }
 }
