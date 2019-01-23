@@ -50,9 +50,7 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
       }
       
     function acceptInvite(uint256 _dateId, uint256 _deposit) public {
-        require(
-            datebook[_dateId].invited == msg.sender && _deposit >= datebook.[_dateId].depositedShare[[datebook[_dateId].host]]
-                );
+        require(datebook[_dateId].invited == msg.sender && _deposit >= datebook[_dateId].depositedShare[[datebook[_dateId].host]]);
         IERC20 tokenContract = IERC20(_tokenAddress);
         uint256 allowance = tokenContract.allowance(msg.sender, address(this));
         require(
