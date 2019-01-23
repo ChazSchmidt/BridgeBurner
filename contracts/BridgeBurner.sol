@@ -139,7 +139,7 @@ contract Date {
         uint256 _payment,
         uint256 _interval // should pass all terms to later create stream
     {
-        return 
+        return (tokenAddress, startBlock, stopBlock, payment, interval); 
     }
     
     function setShareofBalance(address _address, uint256 _share) {
