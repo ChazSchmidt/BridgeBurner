@@ -61,7 +61,9 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
         tokenContract.transferFrom(msg.sender, address(this), _deposit);
 
         datebook[_dateId].setPayment(datebook[_dateId].payment.add(_deposit));
+        datebook[_dateId].adjustRedeemableValue(datebook[_dateId].redeemableValue.add(_deposit));
         datebook[_dateId].setShareofBalance(msg.sender, _deposit);
+        
         
         dateIdTOstreamId[_dateId] = streamNonce;
         create(address(this), burnAddress, datebook[_dateId].getStreamTerms());  // get stream terms and create stream
@@ -71,7 +73,7 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
         require (msg.sender == datebook[_dateId].host || msg.sender == datebook[_dateId].invited);
         datebook[_dateId].setCheckInBool(msg.sender);
         if (datebook[_dateId].hostCheckedIn && datebook[_dateId].invitedCheckedIn) {
-            redeem(dateIdTOstreamId[_dateId]);
+            redeem(dateIdTOstreamId[_dateId]); // TODO: find a way to record the value of the remaining(/received) tokens 
         }
     }
     
@@ -79,8 +81,11 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
         require (msg.sender == datebook[_dateId].host || msg.sender == datebook[_dateId].invited);
         require (datebook[_dateId].hostCheckedIn && datebook[_dateId].invitedCheckedIn);
         IERC20 tokenContract = IERC20(datebook[_dateId].tokenAddress);
-        tokenContract.transferFrom(address(this), datebook[_dateId].host,  datebook[_dateId].depositedShare[datebook[_dateId].host]);
-        tokenContract.transferFrom(address(this), datebook[_dateId].invited,  datebook[_dateId].depositedShare[datebook[_dateId].invited]);
+        uint256 hostShareRatio = datebook[_dateId].depositedShare[datebook[_dateId].host].div(datebook[_dateId].payment);
+        uint256 hostShare = datebook[_dateId].redeemableValue.mul(hostShareRatio);
+        uint256 invitedShare = datebook[_dateId].redeemableValue.sub(hostShare);
+        tokenContract.transferFrom(address(this), datebook[_dateId].host, hostShare);
+        tokenContract.transferFrom(address(this), datebook[_dateId].invited, invitedShare);
     }
     
     function checkDateOwner(_dateId) returns address public {
@@ -100,6 +105,7 @@ contract Date {
     // check in variables
     bool hostCheckedIn;
     bool invitedCheckedIn;
+    uint256 redeemableValue;
     
     //create function parameters
 //    address _sender,
@@ -128,6 +134,7 @@ contract Date {
       interval = 1;
       hostCheckedIn = false;
       invitedCheckedIn = false;
+      redeemableValue = _payment;
     }
     
     function getStreamTerms() returns  
@@ -155,4 +162,8 @@ contract Date {
             invitedCheckedIn = true;
         }
     }
+    
+    function adjustRedeemableValue(uint256 _newValue) {
+        redeemableValue = _newValue;
+    } 
 }
