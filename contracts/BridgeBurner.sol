@@ -88,11 +88,11 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
         tokenContract.transferFrom(address(this), datebook[_dateId].invited, invitedShare);
     }
     
-    function checkDateOwner(_dateId) returns address public {
+    function checkDateOwner(_dateId) public returns (address) {
         return datebook[_dateId].host;
     }
     
-    function checkRequiredDeposit(_dateId) returns uint256 public {
+    function checkRequiredDeposit(_dateId) public returns (uint256) {
         return datebook[_dateId].depositedShare[datebook[_dateId].host];
     }
 }
@@ -138,11 +138,11 @@ contract Date {
     }
     
     function getStreamTerms() returns  
-        address _tokenAddress,
+        (address _tokenAddress,
         uint256 _startBlock,
         uint256 _stopBlock,
         uint256 _payment,
-        uint256 _interval // should pass all terms to later create stream
+        uint256 _interval) // should pass all terms to later create stream
     {
         return (tokenAddress, startBlock, stopBlock, payment, interval); 
     }
