@@ -3,7 +3,7 @@ import "./Streams.sol";
 
 contract DateMaker is Streams {  // creates Dates (shared streams) and corresponds them to the streams[]
     uint256 dateNonce;  // used for dateId and corresponding streamID/might be replaced by streamNonce
-    address burnAddress = 0xbad0000000000000000000000000000000000000;
+    address burnAddress = 0xbAd0000000000000000000000000000000000000;
     Date[] datebook;
     mapping (uint256=>uint256) dateIdTOstreamId;
     
@@ -39,8 +39,14 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
               );
           
           
-          address host = msg.sender;
-          datebook[dateNonce]=Date(host, _invited, _tokenAddress, _startBlock, _stopBlock, _payment}); //TODO fix bug here
+          
+          datebook[dateNonce]=Date({
+		host : msg.sender, 
+		invited : _invited, 
+		tokenAddress : _tokenAddress, 
+		startBlock :_startBlock, 
+		stopBlock : _stopBlock, 
+		payment : _payment});
           emit LogCreateInvite(dateNonce, msg.sender, _invited, _tokenAddress, _startBlock, _stopBlock, _payment, 1);
           
           tokenContract.transferFrom(msg.sender, address(this), deposit);
@@ -49,10 +55,14 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
           
       }
       
+    function getCurrentStreamNonce() returns (uint256) {
+        return streamNonce;
+    }
+
     function acceptInvite(uint256 _dateId, uint256 _deposit) public {
-        address host = datebook[_dateId].host;
-        require(datebook[_dateId].invited == msg.sender && _deposit >= datebook[_dateId].depositedShare[host]);
-        IERC20 tokenContract = IERC20(datebook[_dateId].tokenAddress);
+        address host = datebook[_dateId].getHost();
+        require(datebook[_dateId].getInvited() == msg.sender && _deposit >= datebook[_dateId].getDepositedShare(host));
+        IERC20 tokenContract = IERC20(datebook[_dateId].getTokenAddress());
         uint256 allowance = tokenContract.allowance(msg.sender, address(this));
         require(
               allowance >= _deposit,
@@ -61,32 +71,32 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
         // apply Checks-Effects-Interactions
         tokenContract.transferFrom(msg.sender, address(this), _deposit);
 
-        datebook[_dateId].setPayment(datebook[_dateId].payment.add(_deposit));
-        datebook[_dateId].adjustRedeemableValue(datebook[_dateId].redeemableValue.add(_deposit));
+        datebook[_dateId].setPayment(datebook[_dateId].getPayment().add(_deposit));
+        datebook[_dateId].adjustRedeemableValue(datebook[_dateId].getRedeemableValue().add(_deposit));
         datebook[_dateId].setShareofBalance(msg.sender, _deposit);
         
         
-        dateIdTOstreamId[_dateId] = DateMaker.streamNonce;
+        dateIdTOstreamId[_dateId] = getCurrentStreamNonce();
         create(address(this), burnAddress, datebook[_dateId].getStreamTerms());  // get stream terms and create stream
     }
     
     function checkIn(uint256 _dateId) public {
-        require (msg.sender == datebook[_dateId].host || msg.sender == datebook[_dateId].invited);
+        require (msg.sender == datebook[_dateId].getHost() || msg.sender == datebook[_dateId].getInvited());
         datebook[_dateId].setCheckInBool(msg.sender);
-        if (datebook[_dateId].hostCheckedIn && datebook[_dateId].invitedCheckedIn) {
+        if (datebook[_dateId].getCheckInBool(datebook[_dateId].getHost()) && datebook[_dateId].getCheckInBool(datebook[_dateId].getInvited())) {
             redeem(dateIdTOstreamId[_dateId]); // TODO: find a way to record the value of the remaining(/received) tokens 
         }
     }
     
     function reclaimDeposit(uint256 _dateId) public {
-        require (msg.sender == datebook[_dateId].host || msg.sender == datebook[_dateId].invited);
-        require (datebook[_dateId].hostCheckedIn && datebook[_dateId].invitedCheckedIn);
-        IERC20 tokenContract = IERC20(datebook[_dateId].tokenAddress);
-        address host = datebook[_dateId].host;
-        address invited = datebook[_dateId].invited;
-        uint256 hostShareRatio = datebook[_dateId].depositedShare[host].div(datebook[_dateId].payment);
-        uint256 hostShare = datebook[_dateId].redeemableValue.mul(hostShareRatio);
-        uint256 invitedShare = datebook[_dateId].redeemableValue.sub(hostShare);
+        require (msg.sender == datebook[_dateId].getHost() || msg.sender == datebook[_dateId].getInvited());
+        require (datebook[_dateId].getCheckedInBool(datebook[_dateId].getHost()) && datebook[_dateId].CheckedInBool(datebook[_dateId].getInvited()));
+        IERC20 tokenContract = IERC20(datebook[_dateId].getTokenAddress());
+        address host = datebook[_dateId].getHost();
+        address invited = datebook[_dateId].getInvited();
+        uint256 hostShareRatio = datebook[_dateId].getDepositedShare(host).div(datebook[_dateId].getPayment());
+        uint256 hostShare = datebook[_dateId].getRedeemableValue().mul(hostShareRatio);
+        uint256 invitedShare = datebook[_dateId].getRedeemableValue().sub(hostShare);
         tokenContract.transferFrom(address(this), host, hostShare);
         tokenContract.transferFrom(address(this), invited, invitedShare);
     }
@@ -96,7 +106,7 @@ contract DateMaker is Streams {  // creates Dates (shared streams) and correspon
     }
     
     function checkRequiredDeposit(uint256 _dateId) public returns (uint256) {
-        return datebook[_dateId].depositedShare[datebook[_dateId].host];
+        return datebook[_dateId].getDepositedShare(datebook[_dateId].getHost());
     }
 }
 
@@ -165,8 +175,37 @@ contract Date {
             invitedCheckedIn = true;
         }
     }
+
+    function getCheckInBool(address _address) returns (bool) {
+        if (_address == host) {
+            return hostCheckedIn;
+        } else if (_address == invited) {
+            return invitedCheckedIn;
+        }
+    }
     
     function adjustRedeemableValue(uint256 _newValue) {
         redeemableValue = _newValue;
     } 
+    
+    function getHost() returns (address) {
+        return host;
+    } 
+
+    function getInvited() returns (address) {
+        return invited;
+    }
+	
+    function getDepositedShare(address _share) returns (uint256) {
+        return depositedShare[_share];
+    } 
+    function getTokenAddress() returns (address) {
+        return tokenAddress;
+    }
+    function getPayment() returns (uint256) {
+        return payment;
+    }
+    function getRedeemableValue() returns (uint256) {
+        return redeemableValue;
+    }
 }
