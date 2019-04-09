@@ -1,14 +1,13 @@
 pragma solidity ^0.4.25;
 
 import "./openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
-import "./openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "./openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "./IERC1620.sol";
 
 
 /// @title BridgeBurner - A modified version of Paul Berg's ERC Money Streaming Implementation
 /// @author Chaz Schmidt <schmidt.864@osu.edu> and Paul Berg - <hello@paulrberg.com>
 
+//TODO check in time period
 
 contract BridgeBurner {
   using SafeMath for uint256;
@@ -49,7 +48,6 @@ contract BridgeBurner {
    */
   mapping(uint256 => Date) private dates;
   uint256 private dateNonce;
-  mapping(uint256 => mapping(address => bool)) private updates;
   address burnAddress = 0xbAd0000000000000000000000000000000000000;
 
   /*
@@ -57,7 +55,7 @@ contract BridgeBurner {
    */
    // TODO not modified yet
 
-  event LogCreate(
+  event LogInviteCreate(
     uint256 indexed _dateId,
     address indexed _host,
     address indexed _guest,
@@ -69,10 +67,15 @@ contract BridgeBurner {
     uint256 _interval
   );
 
-  event LogWithdraw(
+  event LogInviteAccepted(
     uint256 indexed _dateId,
-    address indexed _recipient,
-    uint256 _funds
+    address indexed _host,
+    address indexed _guest
+  );
+
+  event LogInviteCancel(
+    uint256 indexed _dateId,
+    address indexed _host,
   );
 
   event LogRedeem(
@@ -82,34 +85,6 @@ contract BridgeBurner {
     uint256 _burnedFunds,
     uint256 _hostShare,
     uint256 _guestShare
-  );
-
-  event LogConfirmUpdate(
-    uint256 indexed _dateId,
-    address indexed confirmer,
-    address _newTokenAddress,
-    uint256 _newStopBlock,
-    uint256 _newPayment,
-    uint256 _newInterval
-  );
-
-  event LogRevokeUpdate(
-    uint256 indexed _dateId,
-    address indexed revoker,
-    address _newTokenAddress,
-    uint256 _newStopBlock,
-    uint256 _newPayment,
-    uint256 _newInterval
-  );
-
-  event LogExecuteUpdate(
-    uint256 indexed _newDateId,
-    address indexed _sender,
-    address indexed _recipient,
-    address _newTokenAddress,
-    uint256 _newStopBlock,
-    uint256 _newPayment,
-    uint256 _newInterval
   );
 
   /*
@@ -137,14 +112,6 @@ contract BridgeBurner {
     require(
       dates[_dateId].host != address(0x0),
       "date doesn't exist"
-    );
-    _;
-  }
-
-  modifier updateConfirmed(uint256 _dateId, address _addr) {
-    require(
-      updates[_dateId][_addr] == true,
-      "msg.sender has not previously confirmed the update"
     );
     _;
   }
@@ -183,7 +150,7 @@ contract BridgeBurner {
     share = date.guestShare;
   }
     if (deltaOf(_dateId) > 0) {
-      share = balanceOf(_dateId).mul(share.div(date.hostShare.add(date.guestShare)));
+      share = balanceOf(_dateId).div(2);
     }
     return share;
   }
@@ -202,7 +169,7 @@ contract BridgeBurner {
       bool hostCheckedIn,
       bool guestCheckedIn,
       address tokenAddress,
-      uint256 balance
+      uint256 initialBalance
   )
   {
     Date memory date = dates[_dateId];
@@ -237,16 +204,6 @@ contract BridgeBurner {
       date.rate.payment,
       date.rate.interval
     );
-  }
-
-// TODO
-  function getUpdate(uint256 _dateId, address _addr)
-    public
-    view
-    dateExists(_dateId)
-    returns (bool active)
-  {
-    return updates[_dateId][_addr];
   }
 
   function create(
@@ -289,7 +246,7 @@ contract BridgeBurner {
       timeframe : Timeframe(_startBlock, _stopBlock),
       rate : Rate(_payment, _interval)
     });
-    emit LogCreate(
+    emit LogInviteCreate(
       dateNonce,
       msg.sender,
       _guest,
@@ -318,6 +275,11 @@ contract BridgeBurner {
       "contract not allowed to transfer enough tokens to match host's deposit"
     );
     tokenContract.transferFrom(msg.sender, address(this), date.hostShare);
+    emit LogInviteAccepted(
+        _dateId,
+        date.host,
+        date.guest
+      );
     date.guestShare = date.hostShare;
     dates[_dateId] = date;
   }
@@ -368,110 +330,18 @@ contract BridgeBurner {
     require(msg.sender == date.host, "Only host can cancel the date without checking in.");
     if(date.guestShare == 0) {
        redeem(_dateId);}
+    emit LogInviteCancel(
+         _dateId,
+         date.host
+       );
   }
 
 function getDateNonce() public view returns (uint256 currentDateNonce) {
   return dateNonce;
 }
 
-  function redeem(uint256 _dateId)
-    public
-    dateExists(_dateId)
-  {
-    Date memory date = dates[_dateId];
-    uint256 participantShare = balanceOf(_dateId).div(2);
-    uint256 delta = deltaOf(_dateId);
-    uint256 burnedFunds = delta.div(date.rate.interval).mul(date.rate.payment);
-    emit LogRedeem(
-      _dateId,
-      date.host,
-      date.guest,
-      burnedFunds,
-      participantShare,
-      participantShare
-    );
-    delete dates[_dateId];
-    updates[_dateId][date.host] = false;
-    updates[_dateId][date.guest] = false;
 
-    // reverts when the token address is not an ERC20 contract
-    IERC20 tokenContract = IERC20(date.tokenAddress);
-    // saving gas by checking beforehand
-    if (burnedFunds > 0) {
-      tokenContract.transfer(date.recipient, burnedFunds);
-      tokenContract.transfer(date.host, participantShare);
-      tokenContract.transfer(date.guest, participantShare);
-  }
-}
 
-// // TODO
-//   function confirmUpdate(
-//     uint256 _dateId,
-//     address _tokenAddress,
-//     uint256 _startBlock,
-//     uint256 _stopBlock,
-//     uint256 _payment,
-//     uint256 _interval
-//   )
-//     public
-//     dateExists(_dateId)
-//     onlyHostOrGuest(_dateId)
-//   {
-//     onlyNewTerms(
-//       _dateId,
-//       _tokenAddress,
-//       _stopBlock,
-//       _payment,
-//       _interval
-//     );
-//     verifyTerms(
-//       _tokenAddress,
-//       block.number,
-//       _stopBlock,
-//       _interval
-//     );
-//
-//     emit LogConfirmUpdate(
-//       _dateId,
-//       msg.sender,
-//       _tokenAddress,
-//       _stopBlock,
-//       _payment,
-//       _interval
-//     );
-//     updates[_dateId][msg.sender] = true;
-//
-//     executeUpdate(
-//       _dateId,
-//       _tokenAddress,
-//       _startBlock,
-//       _stopBlock,
-//       _payment,
-//       _interval
-//     );
-//   }
-//
-// // TODO
-//   function revokeUpdate(
-//     uint256 _dateId,
-//     address _tokenAddress,
-//     uint256 _stopBlock,
-//     uint256 _payment,
-//     uint256 _interval
-//   )
-//     public
-//     updateConfirmed(_dateId, msg.sender)
-//   {
-//     emit LogRevokeUpdate(
-//       _dateId,
-//       msg.sender,
-//       _tokenAddress,
-//       _stopBlock,
-//       _payment,
-//       _interval
-//     );
-//     updates[_dateId][msg.sender] = false;
-//   }
 
   /*  //////////////////////////////////////////////////////////////
    * Private
@@ -495,32 +365,6 @@ function getDateNonce() public view returns (uint256 currentDateNonce) {
       latestBlock = date.timeframe.stop;
     return latestBlock.sub(startBlock);
   }
-
-// TODO
-  function onlyNewTerms(
-    uint256 _dateId,
-    address _tokenAddress,
-    uint256 _stopBlock,
-    uint256 _payment,
-    uint256 _interval
-  )
-    private
-    view
-    returns (bool valid)
-  {
-    require(
-    // Disable solium check because of
-    // https://github.com/duaraghav8/Solium/issues/175
-    // solium-disable-next-line operator-whitespace
-      dates[_dateId].tokenAddress != _tokenAddress ||
-      dates[_dateId].timeframe.stop != _stopBlock ||
-      dates[_dateId].rate.payment != _payment ||
-      dates[_dateId].rate.interval != _interval,
-      "date has these terms already"
-    );
-    return true;
-  }
-
 
   function verifyTerms(
     address _tokenAddress,
@@ -555,53 +399,32 @@ function getDateNonce() public view returns (uint256 currentDateNonce) {
     );
     return true;
   }
+}
 
-// TODO
-    // solium-disable-next-line function-order
-  // function executeUpdate(
-  //   uint256 _dateId,
-  //   address _tokenAddress,
-  //   uint256 _startBlock,
-  //   uint256 _stopBlock,
-  //   uint256 _payment,
-  //   uint256 _interval
-  // )
-  //   private
-  //   dateExists(_dateId)
-  // {
-  //   Date memory date = dates[_dateId];
-  //   require(block.number < date.timeframe.start, "The date has already started. Proceed to check in.");
-  //   if (updates[_dateId][date.host] == false)
-  //     return;
-  //   if (updates[_dateId][date.guest] == false)
-  //     return;
-  //
-  //   // adjust stop block
-  //   uint256 remainder = _stopBlock.sub(block.number).mod(_interval);
-  //   uint256 adjustedStopBlock = _stopBlock.sub(remainder);
-  //   emit LogExecuteUpdate(
-  //     _dateId,
-  //     date.host,
-  //     date.guest,
-  //     _tokenAddress,
-  //     adjustedStopBlock,
-  //     _payment,
-  //     _interval
-  //   );
-  //   updates[_dateId][date.host] = false;
-  //   updates[_dateId][date.guest] = false;
-  //
-  //   redeem(
-  //     _dateId
-  //   );
-  //   create(
-  //     date.host,
-  //     date.guest,
-  //     _tokenAddress,
-  //     block.number,
-  //     adjustedStopBlock,
-  //     _payment,
-  //     _interval
-  //   );
-  // }
+function redeem(uint256 _dateId)
+  private
+{
+  Date memory date = dates[_dateId];
+  uint256 participantShare = balanceOf(_dateId).div(2);
+  uint256 delta = deltaOf(_dateId);
+  uint256 burnedFunds = delta.div(date.rate.interval).mul(date.rate.payment);
+  emit LogRedeem(
+    _dateId,
+    date.host,
+    date.guest,
+    burnedFunds,
+    participantShare,
+    participantShare
+  );
+  delete dates[_dateId];
+
+  // reverts when the token address is not an ERC20 contract
+  IERC20 tokenContract = IERC20(date.tokenAddress);
+  // saving gas by checking beforehand
+  if (burnedFunds > 0) {
+    tokenContract.transfer(date.recipient, burnedFunds);}
+  if (participantShare > 0) {
+    tokenContract.transfer(date.host, participantShare);
+    tokenContract.transfer(date.guest, participantShare);
+}
 }
